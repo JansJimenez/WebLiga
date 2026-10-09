@@ -1,0 +1,41 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /
+
+spring:
+  application:
+    name: liga-provincial-backend
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://aws-0-us-east-2.pooler.supabase.com:5432/postgres?sslmode=require}
+    username: ${SPRING_DATASOURCE_USERNAME:postgres.lnxmjatfurauoyqhopvm}
+    password: ${SPRING_DATASOURCE_PASSWORD:73503995@_789}
+    driver-class-name: org.postgresql.Driver
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      idle-timeout: 30000
+      max-lifetime: 1800000
+      connection-timeout: 20000
+
+  jpa:
+    database-platform: org.hibernate.dialect.PostgreSQLDialect
+    hibernate:
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: false
+        jdbc:
+          batch_size: 25
+
+app:
+  jwt:
+    secret: ${JWT_SECRET:c3VwZXItc2VjcmV0LWtleS1saWdhLXByb3ZpbmNpYWwtZnV0Ym9sLTIwMjYtc3ByaW5nLWJvb3Q=}
+    expiration-ms: 86400000 # 24 horas
+
+logging:
+  level:
+    root: INFO
+    com.ligaprovincial: DEBUG
