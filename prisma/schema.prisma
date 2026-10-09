@@ -1,0 +1,239 @@
+// =============================================================================
+// PLATAFORMA INTEGRAL - LIGA PROVINCIAL DE FÚTBOL
+// Schema de Base de Datos Relacional (PostgreSQL) vía Prisma ORM
+// Rol: Senior Database Engineer & Architect
+// =============================================================================
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// -----------------------------------------------------------------------------
+// ENUMS DE DOMINIO
+// -----------------------------------------------------------------------------
+
+enum UserRole {
+  SUPER_ADMIN
+  DELEGADO
+  ARBITRO
+  PUBLICO
+}
+
+enum TournamentFormat {
+  TODOS_CONTRA_TODOS
+  FASE_GRUPOS
+}
+
+enum MatchStatus {
+  PROGRAMADO
+  EN_JUEGO
+  FINALIZADO
+  SUSPENDIDO
+}
+
+enum CardType {
+  AMARILLA
+  ROJA
+}
+
+// -----------------------------------------------------------------------------
+// MODELO: USUARIOS Y AUTENTICACIÓN (RBAC)
+// -----------------------------------------------------------------------------
+
+model User {
+  id            String    @id @default(uuid()) @db.Uuid
+  email         String    @unique @db.VarChar(255)
+  password_hash String    @db.VarChar(255)
+  role          UserRole  @default(PUBLICO)
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  updated_at    DateTime  @updatedAt @db.Timestamptz
+
+  @@index([role], name: "idx_users_role")
+  @@map("users")
+}
+
+// -----------------------------------------------------------------------------
+// MODELO: CLUB
+// -----------------------------------------------------------------------------
+
+model Club {
+  id               String   @id @default(uuid()) @db.Uuid
+  nombre_oficial   String   @db.VarChar(150)
+  nombre_corto     String   @db.VarChar(50)
+  fundacion_year   Int?     @db.SmallInt
+  logo_url         String?  @db.Text
+  color_principal  String?  @db.VarChar(30)
+  color_secundario String?  @db.VarChar(30)
+  activo           Boolean  @default(true)
+  created_at       DateTime @default(now()) @db.Timestamptz
+  updated_at       DateTime @updatedAt @db.Timestamptz
+
+  // Relaciones
+  jugadores        Player[]
+  partidos_local   Match[]  @relation("ClubLocalMatches")
+  partidos_visita  Match[]  @relation("ClubVisitaMatches")
+  goles            Goal[]
+
+  @@index([activo], name: "idx_clubs_activo")
+  @@index([nombre_corto], name: "idx_clubs_nombre_corto")
+  @@map("clubs")
+}
+
+// -----------------------------------------------------------------------------
+// MODELO: JUGADOR (PLAYER)
+// -----------------------------------------------------------------------------
+
+model Player {
+  id               String    @id @default(uuid()) @db.Uuid
+  club_id          String    @db.Uuid
+  dni              String    @unique @db.VarChar(20)
+  nombres          String    @db.VarChar(100)
+  apellidos        String    @db.VarChar(100)
+  fecha_nacimiento DateTime  @db.Date
+  foto_url         String?   @db.Text
+  posicion         String?   @db.VarChar(50)
+  numero_camiseta  Int?      @db.SmallInt
+  estado_medico    Boolean   @default(false)
+  habilitado       Boolean   @default(true)
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  updated_at       DateTime  @updatedAt @db.Timestamptz
+
+  // Relaciones
+  club             Club      @relation(fields: [club_id], references: [id], onDelete: Restrict)
+  goles            Goal[]
+  tarjetas         Card[]
+  sanciones        Penalty[]
+
+  @@index([club_id], name: "idx_players_club_id")
+  @@index([habilitado], name: "idx_players_habilitado")
+  @@index([apellidos, nombres], name: "idx_players_nombre_completo")
+  @@map("players")
+}
+
+// -----------------------------------------------------------------------------
+// MODELO: TORNEO (TOURNAMENT)
+// -----------------------------------------------------------------------------
+
+model Tournament {
+  id                      String           @id @default(uuid()) @db.Uuid
+  nombre                  String           @db.VarChar(120)
+  anio                    Int              @db.SmallInt
+  formato                 TournamentFormat
+  puntos_victoria         Int              @default(3) @db.SmallInt
+  puntos_empate           Int              @default(1) @db.SmallInt
+  puntos_derrota          Int              @default(0) @db.SmallInt
+  max_amarillas_suspension Int             @default(3) @db.SmallInt
+  created_at              DateTime         @default(now()) @db.Timestamptz
+  updated_at              DateTime         @updatedAt @db.Timestamptz
+
+  // Relaciones
+  partidos                Match[]
+
+  @@index([anio], name: "idx_tournaments_anio")
+  @@map("tournaments")
+}
+
+// -----------------------------------------------------------------------------
+// MODELO: PARTIDO (MATCH)
+// -----------------------------------------------------------------------------
+
+model Match {
+  id             String      @id @default(uuid()) @db.Uuid
+  torneo_id      String      @db.Uuid
+  club_local_id  String      @db.Uuid
+  club_visita_id String      @db.Uuid
+  fecha_hora     DateTime    @db.Timestamptz
+  estadio        String?     @db.VarChar(150)
+  goles_local    Int?        @default(0) @db.SmallInt
+  goles_visita   Int?        @default(0) @db.SmallInt
+  estado         MatchStatus @default(PROGRAMADO)
+  created_at     DateTime    @default(now()) @db.Timestamptz
+  updated_at     DateTime    @updatedAt @db.Timestamptz
+
+  // Relaciones
+  torneo         Tournament  @relation(fields: [torneo_id], references: [id], onDelete: Cascade)
+  club_local     Club        @relation("ClubLocalMatches", fields: [club_local_id], references: [id], onDelete: Restrict)
+  club_visita    Club        @relation("ClubVisitaMatches", fields: [club_visita_id], references: [id], onDelete: Restrict)
+  goles          Goal[]
+  tarjetas       Card[]
+
+  @@index([torneo_id], name: "idx_matches_torneo_id")
+  @@index([club_local_id], name: "idx_matches_club_local")
+  @@index([club_visita_id], name: "idx_matches_club_visita")
+  @@index([fecha_hora], name: "idx_matches_fecha_hora")
+  @@index([estado], name: "idx_matches_estado")
+  @@map("matches")
+}
+
+// -----------------------------------------------------------------------------
+// MODELO: GOLES (GOAL / MATCH EVENT)
+// -----------------------------------------------------------------------------
+
+model Goal {
+  id         String   @id @default(uuid()) @db.Uuid
+  partido_id String   @db.Uuid
+  jugador_id String   @db.Uuid
+  equipo_id  String   @db.Uuid
+  minuto     Int      @db.SmallInt
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  // Relaciones
+  partido    Match    @relation(fields: [partido_id], references: [id], onDelete: Cascade)
+  jugador    Player   @relation(fields: [jugador_id], references: [id], onDelete: Restrict)
+  equipo     Club     @relation(fields: [equipo_id], references: [id], onDelete: Restrict)
+
+  @@index([partido_id], name: "idx_goals_partido_id")
+  @@index([jugador_id], name: "idx_goals_jugador_id")
+  @@index([equipo_id], name: "idx_goals_equipo_id")
+  @@map("goals")
+}
+
+// -----------------------------------------------------------------------------
+// MODELO: TARJETAS (CARD / MATCH EVENT)
+// -----------------------------------------------------------------------------
+
+model Card {
+  id         String   @id @default(uuid()) @db.Uuid
+  partido_id String   @db.Uuid
+  jugador_id String   @db.Uuid
+  tipo       CardType
+  minuto     Int      @db.SmallInt
+  motivo     String?  @db.VarChar(255)
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  // Relaciones
+  partido    Match    @relation(fields: [partido_id], references: [id], onDelete: Cascade)
+  jugador    Player   @relation(fields: [jugador_id], references: [id], onDelete: Restrict)
+
+  @@index([partido_id], name: "idx_cards_partido_id")
+  @@index([jugador_id], name: "idx_cards_jugador_id")
+  @@index([tipo], name: "idx_cards_tipo")
+  @@map("cards")
+}
+
+// -----------------------------------------------------------------------------
+// MODELO: SANCIÓN DISCIPLINARIA (PENALTY)
+// -----------------------------------------------------------------------------
+
+model Penalty {
+  id                 String   @id @default(uuid()) @db.Uuid
+  jugador_id         String   @db.Uuid
+  fechas_suspension  Int      @db.SmallInt
+  fechas_cumplidas   Int      @default(0) @db.SmallInt
+  motivo             String   @db.VarChar(255)
+  activa             Boolean  @default(true)
+  created_at         DateTime @default(now()) @db.Timestamptz
+  updated_at         DateTime @updatedAt @db.Timestamptz
+
+  // Relaciones
+  jugador            Player   @relation(fields: [jugador_id], references: [id], onDelete: Cascade)
+
+  @@index([jugador_id], name: "idx_penalties_jugador_id")
+  @@index([activa], name: "idx_penalties_activa")
+  @@map("penalties")
+}
